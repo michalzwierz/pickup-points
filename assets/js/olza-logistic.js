@@ -4,53 +4,97 @@
      * Responsible for custom js functions
      */
 
+    function olzaExtractProviderFromRate(rateVal) {
+        if (!rateVal) {
+            return '';
+        }
+
+        var value = rateVal.toString();
+
+        if (value.indexOf(':') !== -1) {
+            var parts = value.split(':');
+            return parts.pop();
+        }
+
+        return '';
+    }
+
+    function olzaGetSelectedShippingInput() {
+        return jQuery('input[name="shipping_method[0]"]:checked');
+    }
+
+    function olzaRefreshPickupControls() {
+        var $selected = olzaGetSelectedShippingInput();
+
+        jQuery('.olza-load-map').hide();
+        jQuery('.oloz-pickup-selection').hide();
+
+        if (!$selected.length) {
+            return;
+        }
+
+        var $container = $selected.closest('li');
+        var providerCode = '';
+
+        var $link = $container.find('.olza-load-map');
+
+        if ($link.length) {
+            providerCode = $link.data('provider') || '';
+        }
+
+        if (!providerCode) {
+            providerCode = olzaExtractProviderFromRate($selected.val());
+        }
+
+        if (providerCode) {
+            if ($link.length) {
+                $link.data('provider', providerCode).show();
+            }
+
+            var $selection = $container.find('.oloz-pickup-selection');
+
+            if ($selection.length) {
+                $selection.data('provider', providerCode).show();
+            }
+        }
+    }
+
     jQuery(document).ready(function () {
 
         if (jQuery('#olza-spedition-dropdown').length > 0) {
             jQuery('#olza-spedition-dropdown').select2({ width: '100%' });
         }
 
+        olzaRefreshPickupControls();
+
+        jQuery(document).on('change', 'input[name="shipping_method[0]"]', function () {
+            olzaRefreshPickupControls();
+        });
+
         jQuery(document).on('click', '.olza-load-map', function (e) {
-			
-			
-    	var selectedMethod = jQuery('input[name="shipping_method[0]"]:checked').val();
-			
-		
-			
-		if (selectedMethod) {
-        // Determine the value to select based on the shipping method
-        var selectedValue = '';
+            e.preventDefault();
 
-        if (selectedMethod === 'olza_pickup_wedobox_28') {
-            selectedValue = 'wedo-box'; // Value for Wedo Box
-        } else if (selectedMethod === 'olza_pickup_29') {
-            selectedValue = 'ppl-ps'; // Value for PPL PS
-        } else {
-            selectedValue = ''; // Handle other cases if necessary
-        }
-			  }
-            if ($('.shipping_method:checked').filter('[value*="olza_pickup"]').length > 0) {
+            var $button = jQuery(this);
+            var providerCode = $button.data('provider') || '';
+            var $selected = olzaGetSelectedShippingInput();
+            var rateValue = $selected.length ? $selected.val() : '';
 
-                jQuery("body").addClass("modal-open");
-
-                jQuery('#olza-spedition-dropdown').select2({ width: '100%' });
-
-                olza_load_map_cluster_data(selectedValue);
-
-            } else {
-
-                if ($('.shipping_method[value*="olza_pickup"]').is(':hidden') && $('.shipping_method:checked').length === 0) {
-                    jQuery("body").addClass("modal-open");
-
-                    jQuery('#olza-spedition-dropdown').select2({ width: '100%' });
-
-                    olza_load_map_cluster_data(selectedValue);
-                } else {
-                    alert(olza_global.chose_ship_method);
-                }
-
+            if (!providerCode) {
+                providerCode = olzaExtractProviderFromRate(rateValue);
             }
 
+            if (!providerCode) {
+                alert(olza_global.chose_ship_method);
+                return;
+            }
+
+            jQuery('body').addClass('modal-open');
+
+            if (jQuery('#olza-spedition-dropdown').length > 0) {
+                jQuery('#olza-spedition-dropdown').select2({ width: '100%' });
+            }
+
+            olza_load_map_cluster_data(providerCode);
         });
 
         jQuery(document).on('click', '.olza-close-modal', function (e) {
@@ -78,6 +122,7 @@
                             text: olza_global.confirm,
                             action: function () {
                                 jQuery("body").removeClass("modal-open");
+                                olzaRefreshPickupControls();
                             }
                         },
                         somethingElse: {
@@ -88,6 +133,7 @@
                                 jQuery('#delivery_courier_id').val('');
 
                                 jQuery('.oloz-pickup-selection').hide();
+                                olzaRefreshPickupControls();
                             }
                         },
                         cancel: {
@@ -98,6 +144,7 @@
                                 jQuery('#delivery_point_id').val('');
                                 jQuery('#delivery_courier_id').val('');
                                 jQuery('.oloz-pickup-selection').hide();
+                                olzaRefreshPickupControls();
                             }
                         }
                     }
@@ -105,6 +152,7 @@
 
             } else {
                 jQuery("body").removeClass("modal-open");
+                olzaRefreshPickupControls();
             }
 
         });
@@ -114,11 +162,8 @@
          */
 
         jQuery(document).on('change', '#olza-spedition-dropdown', function (e) {
-
             var olza_ship_value = jQuery(this).val();
-
             olza_load_map_cluster_data(olza_ship_value, 'dropdown');
-
         });
 
 
@@ -127,8 +172,8 @@
          */
 
 
-        function olza_load_map_cluster_data(spedition, loadType = 'all') {
-           
+        function olza_load_map_cluster_data(providerCode, loadType = 'all') {
+
             /**
              * Reset geocode container
              */
@@ -140,9 +185,13 @@
 
             var country_val = jQuery('#billing_country').val();
             var country_label = jQuery('#billing_country').find('option:selected').text();
-			var spedition = jQuery('input[name="shipping_method[0]"]:checked').val();
-		
-            console.log(spedition);
+            var selectedRate = olzaGetSelectedShippingInput();
+            var rateValue = selectedRate.length ? selectedRate.val() : '';
+            var chosenProvider = providerCode;
+
+            if (!chosenProvider) {
+                chosenProvider = olzaExtractProviderFromRate(rateValue);
+            }
 
             /**
              * Adding Loader
@@ -159,7 +208,8 @@
                 action: 'olza_get_pickup_points',
                 country: country_val,
                 country_name: country_label,
-                spedition: spedition
+                spedition: rateValue,
+                provider_code: chosenProvider
             };
 
             /**
@@ -186,6 +236,15 @@
                 if (response.success !== undefined && response.success) {
 
                     if (response.data !== undefined) {
+
+                        if (response.provider) {
+                            var $selectedRate = olzaGetSelectedShippingInput();
+                            if ($selectedRate.length) {
+                                var $selectedContainer = $selectedRate.closest('li');
+                                $selectedContainer.find('.olza-load-map').data('provider', response.provider);
+                                $selectedContainer.find('.oloz-pickup-selection').data('provider', response.provider);
+                            }
+                        }
 
                         /**
                          * Adding all spedition
@@ -573,7 +632,7 @@
                                  * spedition
                                  */
 
-                                load_nearby_places(selected.result.center[0], selected.result.center[1], country_val, spedition);
+                                load_nearby_places(selected.result.center[0], selected.result.center[1], country_val, chosenProvider);
 
                             });
 
@@ -590,6 +649,8 @@
                 }
 
             });
+
+            olzaRefreshPickupControls();
 
             return false;
 

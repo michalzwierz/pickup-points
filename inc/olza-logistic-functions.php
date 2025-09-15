@@ -210,235 +210,304 @@ function olza_get_pickup_points_callback()
 {
     global $olza_options;
     $olza_options = get_option('olza_options');
-	
-    if (isset($_POST['nonce']) && wp_verify_nonce($_POST['nonce'], 'olza_checkout')) {
 
-        $country = isset($_POST['country']) && $_POST['country'] != '' ? $_POST['country'] : '';
-        $country_name = isset($_POST['country_name']) && $_POST['country_name'] != '' ? $_POST['country_name'] : '';
-
-        $api_url = isset($olza_options['api_url']) && !empty($olza_options['api_url']) ? $olza_options['api_url'] : '';
-        $access_token = isset($olza_options['access_token']) && !empty($olza_options['access_token']) ? $olza_options['access_token'] : '';
-		
-		if(isset($_POST['spedition']) && !empty($_POST['spedition'])){
-			 $spedition_data =  $_POST['spedition'];
-			
-			if( $spedition_data == 'olza_pickup_39'){
-				$spedition =  'ppl-ps';
-			}elseif($spedition_data == 'olza_pickup_wedobox_41'){
-				$spedition =  'wedo-box';
-			}
-		}else{
-			 $spedition =  'all';
-		}
-       
-
-        $lat =  0;
-        $lng =  0;
-
-        if (empty($api_url) || empty($access_token)) {
-			
-            echo json_encode(
-                array(
-                    'success' => false,
-                    'message' => __('Please verify APP URL & Acess Token.', 'olza-logistic-woo')
-                )
-            );
-            wp_die();
-        }
-
-        $args = array(
-            'timeout'   => 30, // Timeout in seconds
-            'headers'   => array(
-                'Content-Type'  => 'application/json'
-            )
-        );
-
-        $country_file_path =  OLZA_LOGISTIC_PLUGIN_PATH . 'data/' . strtolower($country) . '.json';
-
-
-        if (file_exists($country_file_path)) {
-
-            $config_response = file_get_contents($country_file_path);
-
-            if (!json_decode($config_response)->success) {
-				
-                echo json_encode(
-                    array(
-                        'success' => false,
-                        'message' => json_decode($config_response)->code . ' - ' . json_decode($config_response)->message,
-                    )
-                );
-                wp_die();
-            }
-
-            $country_data_arr = json_decode($config_response)->data;
-
-            $spedition_arr = array();
-            $spedition_dropdown_arr = array();
-
-            if (!empty($country_data_arr) && !empty($country_data_arr->speditions)) {
-
-                $spedition_dropdown_arr[] = array('id' => 'all', 'text' => 'ALL');
-
-                foreach ($country_data_arr->speditions as $key => $speditions_obj) {
-                    $spedition_arr[] = $speditions_obj->code;
-
-                    $spedition_dropdown_item = [];
-                    $spedition_dropdown_item['id'] =  $speditions_obj->code;
-                    $spedition_dropdown_item['text'] =  $speditions_obj->code;
-                    $spedition_dropdown_arr[] = $spedition_dropdown_item;
-                }
-            }
-			
-            if (!empty($spedition_arr)) {
-// 			 $spedition = 'all'; // Default fallback
-
-// 				if (isset($_POST['spedition']) && !empty($_POST['spedition'])) {
-// 					$spedition_data = $_POST['spedition'];
-
-// 					if ($spedition_data === 'olza_pickup_39') {
-// 						$spedition = 'ppl-ps';
-// 					} elseif ($spedition_data === 'olza_pickup_wedobox_41') {
-// 						$spedition = 'wedo-box';
-// 					}
-// 				}
-                if ($spedition == 'all') {
-                    $spedition_list = implode(',', $spedition_arr);
-
-                    $sped_file_name = strtolower($country) . '_' . 'all';
-				
-                } else {
-                    $spedition_list = $spedition;
-                    $sped_file_name = strtolower($country) . '_' . $spedition;
-                }
-
-                $find_file_path =  OLZA_LOGISTIC_PLUGIN_PATH . 'data/' . $sped_file_name . '.json';
-
-                $find_response = file_get_contents($find_file_path);
-
-//                 echo '<pre>';
-//                 print_r(json_decode($find_response));
-//                 echo '</pre>';
-
-                // echo json_encode(
-                //     array(
-                //         'success' => false,
-                //         'message' => '',
-                //     )
-                // );
-                // wp_die();
-
-                if (!json_decode($find_response)->success) {
-
-                    echo json_encode(
-                        array(
-                            'success' => false,
-                            'message' => $find_file_path . ' -content not found ' . json_decode($find_response)->message,
-                        )
-                    );
-                    wp_die();
-                } else {
-
-                    $find_data_arr = json_decode($find_response)->data;
-
-
-
-                    $pickup_list = array();
-
-                    $pickup_full_list = array();
-
-                    if (!empty($find_data_arr) && !empty($find_data_arr->items)) {
-
-                        foreach ($find_data_arr->items as $key => $pickup_obj) {
-
-
-
-                            $pickup_list = [
-                                'type' => 'Feature',
-                                'properties' => [
-                                    'title' => html_entity_decode($pickup_obj->address->full),
-                                    'pointid' => html_entity_decode($pickup_obj->id),
-                                    'spedition' => html_entity_decode($pickup_obj->spedition),
-                                ],
-                                'geometry' => [
-                                    'type' => 'Point',
-                                    'coordinates' => [$pickup_obj->location->longitude, $pickup_obj->location->latitude]
-                                ]
-                            ];
-                            $pickup_full_list[] = $pickup_list;
-                            $centerpoint = [$pickup_obj->location->longitude, $pickup_obj->location->latitude];
-                            $lat = $pickup_obj->location->latitude;
-                            $lng = $pickup_obj->location->longitude;
-                        }
-
-                        /**
-                         * Nearby Places
-                         */
-
-                        $nearby_api_endpoint = olza_validate_url($api_url . '/nearby');
-
-                        $nearby_t_args = array(
-                            'access_token' => $access_token,
-                            'country' => $country,
-                            'spedition' => $spedition_list,
-                        );
-
-                        if ($lat != 0 && $lng != 0) {
-                            $nearby_t_args['location'] = $lat . ',' . $lng;
-                        }
-
-                        $nearby_api_url = add_query_arg($nearby_t_args, $nearby_api_endpoint);
-
-                        $nrearby_response = wp_remote_get($nearby_api_url, $args);
-
-                        $item_listings = '';
-                        $item_listings .= '<ul>';
-                        if (is_wp_error($nrearby_response)) {
-
-                            $error_message = $nrearby_response->get_error_message();
-                            $item_listings .= '<li>' . $error_message . '</li>';
-                        } else {
-
-                            $nearbydata = wp_remote_retrieve_body($nrearby_response);
-
-                            $nearbydata_arr = json_decode($nearbydata)->data;
-
-                            if (!empty($nearbydata_arr) && !empty($nearbydata_arr->items)) {
-
-                                foreach ($nearbydata_arr->items as $key => $nearby_obj) {
-									
-									// echo "testing";
-  if ($nearby_obj->spedition == 'WEDO-BOX' || $nearby_obj->spedition == 'PPL-PS') {
-                                    $item_listings .= '<li><a class="olza-flyto" href="javascript:void(0)" pointid="' . $nearby_obj->id . '" spedition="' . $nearby_obj->spedition . '" lat="' . $nearby_obj->location->latitude . '" long="' . $nearby_obj->location->longitude . '" address="' . html_entity_decode($nearby_obj->address->full) . '"> <p class="ad-name">' . html_entity_decode($nearby_obj->names[0]) . '</p><p class="ad-full">' . html_entity_decode($nearby_obj->address->full) . '</p><p class="ad-dis">' . $nearby_obj->location->distance . ' m</p></a></li>';
- }     
-								}
-                            } else {
-                              $item_listings .= '<li>No places found</li>';
-                            }
-                        }
-
-                        $item_listings .= '</ul>';
-
-                        echo json_encode(array('success' => true, 'dropdown' => $spedition_dropdown_arr, 'listings' => $item_listings, 'center' => $centerpoint, 'data' => $pickup_full_list, 'message' => __('Pick Points Loaded Successfully.', 'olza-logistic-woo')));
-                        wp_die();
-                    } else {
-                        echo json_encode(array('success' => true, 'message' => sprintf(__('There are no pickup points in %s.', 'olza-logistic-woo'), $country_name)));
-                        wp_die();
-                    }
-                }
-            } else {
-                echo json_encode(array('success' => true, 'message' => sprintf(__('There are no pickup points in %s.', 'olza-logistic-woo'), $country_name)));
-                wp_die();
-            }
-        } else {
-            echo json_encode(array('success' => false, 'message' => __('Country file not exists.', 'olza-logistic-woo')));
-            wp_die();
-        }
-    } else {
-
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'olza_checkout')) {
         echo json_encode(array('success' => false, 'message' => __('Security verification failed.', 'olza-logistic-woo')));
         wp_die();
     }
+
+    $country = isset($_POST['country']) ? sanitize_text_field(wp_unslash($_POST['country'])) : '';
+    $country_name = isset($_POST['country_name']) ? sanitize_text_field(wp_unslash($_POST['country_name'])) : '';
+
+    if (empty($country)) {
+        echo json_encode(array('success' => false, 'message' => __('Please choose a country before loading pickup points.', 'olza-logistic-woo')));
+        wp_die();
+    }
+
+    $country = strtolower($country);
+
+    $api_url = isset($olza_options['api_url']) && !empty($olza_options['api_url']) ? $olza_options['api_url'] : '';
+    $access_token = isset($olza_options['access_token']) && !empty($olza_options['access_token']) ? $olza_options['access_token'] : '';
+
+    $selected_provider = '';
+
+    if (isset($_POST['provider_code']) && !empty($_POST['provider_code'])) {
+        $selected_provider = olza_normalize_code(wp_unslash($_POST['provider_code']));
+    }
+
+    if (empty($selected_provider) && isset($_POST['spedition']) && !empty($_POST['spedition'])) {
+        $rate_identifier = sanitize_text_field(wp_unslash($_POST['spedition']));
+
+        if (strpos($rate_identifier, ':') !== false) {
+            $parts = explode(':', $rate_identifier);
+            $selected_provider = olza_normalize_code(end($parts));
+        } else {
+            $selected_provider = olza_normalize_code($rate_identifier);
+        }
+    }
+
+    $lat = 0;
+    $lng = 0;
+
+    $data_dir = trailingslashit(OLZA_LOGISTIC_PLUGIN_PATH) . 'data/';
+    $country_file_path = $data_dir . $country . '.json';
+
+    if (!file_exists($country_file_path)) {
+        echo json_encode(array('success' => false, 'message' => __('Country file not exists.', 'olza-logistic-woo')));
+        wp_die();
+    }
+
+    $config_response = file_get_contents($country_file_path);
+    $config_json = json_decode($config_response);
+
+    if (!is_object($config_json) || empty($config_json->success)) {
+        echo json_encode(array('success' => false, 'message' => (is_object($config_json) && isset($config_json->message)) ? $config_json->code . ' - ' . $config_json->message : __('Unable to read pickup configuration.', 'olza-logistic-woo')));
+        wp_die();
+    }
+
+    $country_speditions = olza_extract_speditions_from_config($config_json);
+    $available_speditions = array_keys($country_speditions);
+
+    $spedition_dropdown_arr = array();
+    $spedition_dropdown_arr[] = array('id' => 'all', 'text' => __('ALL', 'olza-logistic-woo'));
+
+    foreach ($country_speditions as $code => $info) {
+        $label = isset($info['label']) ? $info['label'] : strtoupper($code);
+        $spedition_dropdown_arr[] = array(
+            'id' => $code,
+            'text' => $label,
+        );
+    }
+
+    if (!in_array($selected_provider, $available_speditions, true)) {
+        $selected_provider = !empty($available_speditions) ? reset($available_speditions) : '';
+    }
+
+    if (empty($selected_provider)) {
+        echo json_encode(array('success' => false, 'message' => __('No pickup providers available for the selected country.', 'olza-logistic-woo')));
+        wp_die();
+    }
+
+    $provider_file_path = $data_dir . $country . '_' . $selected_provider . '.json';
+
+    if (!file_exists($provider_file_path)) {
+        echo json_encode(array('success' => false, 'message' => __('Pickup point file is missing or invalid.', 'olza-logistic-woo')));
+        wp_die();
+    }
+
+    $find_response = file_get_contents($provider_file_path);
+    $find_json = json_decode($find_response);
+
+    if (!is_object($find_json) || empty($find_json->success)) {
+        echo json_encode(array('success' => false, 'message' => isset($find_json->message) ? $find_json->message : __('Pickup point file is missing or invalid.', 'olza-logistic-woo')));
+        wp_die();
+    }
+
+    $find_data_arr = isset($find_json->data) ? $find_json->data : array();
+    $pickup_full_list = array();
+    $centerpoint = array();
+
+    if (!empty($find_data_arr) && !empty($find_data_arr->items)) {
+        foreach ($find_data_arr->items as $pickup_obj) {
+            $pickup_full_list[] = array(
+                'type' => 'Feature',
+                'properties' => array(
+                    'title' => html_entity_decode($pickup_obj->address->full),
+                    'pointid' => html_entity_decode($pickup_obj->id),
+                    'spedition' => html_entity_decode($pickup_obj->spedition),
+                ),
+                'geometry' => array(
+                    'type' => 'Point',
+                    'coordinates' => array($pickup_obj->location->longitude, $pickup_obj->location->latitude),
+                ),
+            );
+
+            if (empty($centerpoint)) {
+                $centerpoint = array($pickup_obj->location->longitude, $pickup_obj->location->latitude);
+                $lat = $pickup_obj->location->latitude;
+                $lng = $pickup_obj->location->longitude;
+            }
+        }
+    }
+
+    if (empty($pickup_full_list)) {
+        echo json_encode(array('success' => true, 'dropdown' => $spedition_dropdown_arr, 'data' => array(), 'listings' => '<ul><li>' . esc_html(sprintf(__('There are no pickup points in %s.', 'olza-logistic-woo'), $country_name)) . '</li></ul>', 'center' => array(), 'message' => sprintf(__('There are no pickup points in %s.', 'olza-logistic-woo'), $country_name)));
+        wp_die();
+    }
+
+    if (empty($api_url) || empty($access_token)) {
+        echo json_encode(array('success' => false, 'message' => __('Please verify APP URL & Acess Token.', 'olza-logistic-woo')));
+        wp_die();
+    }
+
+    $args = array(
+        'timeout' => 30,
+        'headers' => array('Content-Type' => 'application/json'),
+    );
+
+    $nearby_api_endpoint = olza_validate_url($api_url . '/nearby');
+    $nearby_params = array(
+        'access_token' => $access_token,
+        'country' => $country,
+        'spedition' => $selected_provider,
+    );
+
+    if (!empty($lat) && !empty($lng)) {
+        $nearby_params['location'] = $lat . ',' . $lng;
+    }
+
+    $nearby_api_url = add_query_arg($nearby_params, $nearby_api_endpoint);
+    $nearby_response = wp_remote_get($nearby_api_url, $args);
+
+    $item_listings = '<ul>';
+
+    if (is_wp_error($nearby_response)) {
+        $item_listings .= '<li>' . esc_html($nearby_response->get_error_message()) . '</li>';
+    } else {
+        $nearby_data = wp_remote_retrieve_body($nearby_response);
+        $nearby_json = json_decode($nearby_data);
+        $nearby_items = (is_object($nearby_json) && isset($nearby_json->data) && isset($nearby_json->data->items)) ? $nearby_json->data->items : array();
+
+        if (!empty($nearby_items)) {
+            foreach ($nearby_items as $nearby_obj) {
+                $item_listings .= '<li><a class="olza-flyto" href="javascript:void(0)" pointid="' . esc_attr($nearby_obj->id) . '" spedition="' . esc_attr($nearby_obj->spedition) . '" lat="' . esc_attr($nearby_obj->location->latitude) . '" long="' . esc_attr($nearby_obj->location->longitude) . '" address="' . esc_attr(html_entity_decode($nearby_obj->address->full)) . '"><p class="ad-name">' . esc_html(html_entity_decode($nearby_obj->names[0])) . '</p><p class="ad-full">' . esc_html(html_entity_decode($nearby_obj->address->full)) . '</p><p class="ad-dis">' . esc_html($nearby_obj->location->distance) . ' m</p></a></li>';
+            }
+        } else {
+            $item_listings .= '<li>' . __('No places found', 'olza-logistic-woo') . '</li>';
+        }
+    }
+
+    $item_listings .= '</ul>';
+
+    echo json_encode(array(
+        'success' => true,
+        'dropdown' => $spedition_dropdown_arr,
+        'listings' => $item_listings,
+        'center' => $centerpoint,
+        'data' => $pickup_full_list,
+        'message' => __('Pick Points Loaded Successfully.', 'olza-logistic-woo'),
+        'provider' => $selected_provider,
+    ));
+    wp_die();
+}
+function olza_get_all_provider_details()
+{
+    $options = get_option('olza_options');
+
+    if (!isset($options['available_speditions']) || !is_array($options['available_speditions'])) {
+        return array();
+    }
+
+    return $options['available_speditions'];
+}
+
+function olza_get_shipping_provider_choices($selected = '')
+{
+    $provider_map = olza_get_all_provider_details();
+    $choices = array();
+
+    foreach ($provider_map as $country_code => $providers) {
+        if (!is_array($providers)) {
+            continue;
+        }
+
+        foreach ($providers as $code => $info) {
+            $provider_code = '';
+            $label = '';
+
+            if (is_array($info)) {
+                $provider_code = isset($info['code']) ? $info['code'] : $code;
+                $label = isset($info['label']) ? $info['label'] : '';
+            } elseif (is_object($info)) {
+                $provider_code = isset($info->code) ? $info->code : $code;
+                $label = isset($info->label) ? $info->label : '';
+            } else {
+                $provider_code = $code;
+            }
+
+            $provider_code = olza_normalize_code($provider_code);
+
+            if (empty($provider_code)) {
+                continue;
+            }
+
+            if (empty($label)) {
+                $label = strtoupper($provider_code);
+            }
+
+            $display_label = $label;
+
+            if (!empty($country_code)) {
+                $display_label .= ' – ' . strtoupper($country_code);
+            }
+
+            if (isset($choices[$provider_code])) {
+                if (!empty($country_code)) {
+                    $choices[$provider_code] .= ', ' . strtoupper($country_code);
+                }
+            } else {
+                $choices[$provider_code] = $display_label;
+            }
+        }
+    }
+
+    $selected = olza_normalize_code($selected);
+
+    if (!empty($selected) && !isset($choices[$selected])) {
+        $choices[$selected] = strtoupper($selected);
+    }
+
+    return $choices;
+}
+
+function olza_get_provider_details($provider_code)
+{
+    $provider_code = olza_normalize_code($provider_code);
+
+    $details = array(
+        'code' => $provider_code,
+        'label' => $provider_code ? strtoupper($provider_code) : '',
+        'countries' => array(),
+    );
+
+    if (empty($provider_code)) {
+        return $details;
+    }
+
+    $provider_map = olza_get_all_provider_details();
+
+    foreach ($provider_map as $country_code => $providers) {
+        if (!is_array($providers)) {
+            continue;
+        }
+
+        foreach ($providers as $code => $info) {
+            $matched_code = '';
+            $label = '';
+
+            if (is_array($info)) {
+                $matched_code = isset($info['code']) ? olza_normalize_code($info['code']) : olza_normalize_code($code);
+                $label = isset($info['label']) ? $info['label'] : '';
+            } elseif (is_object($info)) {
+                $matched_code = isset($info->code) ? olza_normalize_code($info->code) : olza_normalize_code($code);
+                $label = isset($info->label) ? $info->label : '';
+            } else {
+                $matched_code = olza_normalize_code($code);
+            }
+
+            if ($matched_code !== $provider_code) {
+                continue;
+            }
+
+            if (!empty($label)) {
+                $details['label'] = $label;
+            }
+
+            $details['countries'][] = strtoupper($country_code);
+        }
+    }
+
+    return $details;
 }
 
 
@@ -457,115 +526,205 @@ function register_tyche_method($methods)
     return $methods;
 }
 
-/**
- * WC_Shipping_Olza_Pickup class.
- *
- * @class WC_Shipping_Olza_Pickup
- * @version 1.0.0
- * @package Shipping-for-WooCommerce/Classes
- * @category Class
- * @author Tyche Softwares
- */
-class WC_Shipping_Olza_Pickup extends WC_Shipping_Method
+abstract class WC_Shipping_Olza_Pickup_Base extends WC_Shipping_Method
+{
+    protected $default_method_title = '';
+    protected $default_method_description = '';
+    protected $default_provider_code = '';
+    protected $provider_code = '';
+    protected $provider_label = '';
+    protected $provider_countries = array();
+
+    public function __construct($instance_id = 0)
+    {
+        $this->instance_id = absint($instance_id);
+        $this->supports = array(
+            'shipping-zones',
+            'instance-settings',
+        );
+
+        $this->init_form_fields();
+
+        $this->enabled = $this->get_option('enabled', 'yes');
+        $this->title = $this->get_option('title', $this->default_method_title);
+
+        $this->load_provider_settings();
+
+        add_action('woocommerce_update_options_shipping_' . $this->id, array($this, 'process_admin_options'));
+    }
+
+    protected function init_form_fields()
+    {
+        $provider_choices = olza_get_shipping_provider_choices($this->default_provider_code);
+
+        $provider_field = array(
+            'title' => __('Pickup provider', 'olza-logistic-woo'),
+            'description' => __('Choose which provider this shipping method should use. Sync pickup data to refresh this list.', 'olza-logistic-woo'),
+            'desc_tip' => true,
+        );
+
+        if (!empty($provider_choices)) {
+            $provider_field['type'] = 'select';
+            $provider_field['options'] = array('' => __('— Select a provider —', 'olza-logistic-woo')) + $provider_choices;
+            $provider_field['default'] = $this->default_provider_code;
+        } else {
+            $provider_field['type'] = 'text';
+            $provider_field['description'] = __('Enter the pickup provider code (e.g. ppl-ps). Sync pickup data to populate this list.', 'olza-logistic-woo');
+            $provider_field['desc_tip'] = false;
+        }
+
+        $this->instance_form_fields = array(
+            'enabled' => array(
+                'title' => __('Enable/Disable', 'olza-logistic-woo'),
+                'type' => 'checkbox',
+                'label' => __('Enable this shipping method', 'olza-logistic-woo'),
+                'default' => 'yes',
+            ),
+            'title' => array(
+                'title' => __('Method Title', 'olza-logistic-woo'),
+                'type' => 'text',
+                'description' => __('This controls the title which the user sees during checkout.', 'olza-logistic-woo'),
+                'default' => $this->default_method_title,
+                'desc_tip' => true,
+            ),
+            'provider_code' => $provider_field,
+        );
+    }
+
+    protected function load_provider_settings()
+    {
+        $provider_code = $this->get_option('provider_code', $this->default_provider_code);
+        $provider_code = olza_normalize_code($provider_code);
+        $this->provider_code = $provider_code;
+
+        $details = olza_get_provider_details($provider_code);
+        $this->provider_label = !empty($details['label']) ? $details['label'] : ($provider_code ? strtoupper($provider_code) : '');
+        $this->provider_countries = !empty($details['countries']) ? $details['countries'] : array();
+    }
+
+    public function calculate_shipping($package = array())
+    {
+        $this->load_provider_settings();
+
+        if (empty($this->provider_code)) {
+            return;
+        }
+
+        $label = $this->title;
+
+        if (!empty($this->provider_label)) {
+            $label .= ' (' . $this->provider_label . ')';
+        }
+
+        $rate_id = $this->id . '_' . $this->instance_id . ':' . $this->provider_code;
+
+        $this->add_rate(array(
+            'id' => $rate_id,
+            'label' => $label,
+            'meta_data' => array(
+                'provider_code' => $this->provider_code,
+                'provider_label' => $this->provider_label,
+                'provider_countries' => $this->provider_countries,
+            ),
+        ));
+    }
+
+    public function process_admin_options()
+    {
+        parent::process_admin_options();
+
+        $provider_key = $this->get_field_key('provider_code');
+
+        if (isset($_POST[$provider_key])) {
+            $provider_code = wc_clean(wp_unslash($_POST[$provider_key]));
+            $provider_code = olza_normalize_code($provider_code);
+            $this->update_option('provider_code', $provider_code);
+        }
+
+        $this->load_provider_settings();
+    }
+}
+
+class WC_Shipping_Olza_Pickup extends WC_Shipping_Olza_Pickup_Base
 {
     public function __construct($instance_id = 0)
     {
         $this->id = 'olza_pickup';
-        $this->instance_id = absint($instance_id);
-        $this->method_title = __('PickUp Points', 'olza-logistic-woo');
-        $this->method_description = __('PickUp Points Shipping method.', 'olza-logistic-woo');
-        $this->supports = array(
-            'shipping-zones',
-            'instance-settings',
-        );
-        $this->instance_form_fields = array(
-            'enabled' => array(
-                'title' => __('Enable/Disable', 'olza-logistic-woo'),
-                'type' => 'checkbox',
-                'label' => __('Enable this shipping method', 'olza-logistic-woo'),
-                'default' => 'yes',
-            ),
-            'title' => array(
-                'title' => __('Method Title', 'olza-logistic-woo'),
-                'type' => 'text',
-                'description' => __('This controls the title which the user sees during checkout.', 'olza-logistic-woo'),
-                'default' => __('PickUp Points', 'olza-logistic-woo'),
-                'desc_tip' => true
-            )
-        );
-        $this->enabled = $this->get_option('enabled');
-        $this->title = $this->get_option('title');
+        $this->default_method_title = __('PickUp Points', 'olza-logistic-woo');
+        $this->method_title = $this->default_method_title;
+        $this->default_method_description = __('PickUp Points Shipping method.', 'olza-logistic-woo');
+        $this->method_description = $this->default_method_description;
+        $this->default_provider_code = 'ppl-ps';
 
-        add_action('woocommerce_update_options_shipping_' . $this->id, array($this, 'process_admin_options'));
-    }
-
-    public function calculate_shipping($package = array())
-    {
-        $this->add_rate(array(
-            'id' => $this->id . '_' . $this->instance_id,
-            'label' => $this->title,
-        ));
+        parent::__construct($instance_id);
     }
 }
 
-class WC_Shipping_Olza_Pickup_wedobox extends WC_Shipping_Method
+class WC_Shipping_Olza_Pickup_wedobox extends WC_Shipping_Olza_Pickup_Base
 {
     public function __construct($instance_id = 0)
     {
-        $this->id = 'olza_pickup_wedobox'; // Unique ID
-        $this->instance_id = absint($instance_id);
-        $this->method_title = __('Wedo Box', 'olza-logistic-woo');
-        $this->method_description = __('Wedo Box Shipping method.', 'olza-logistic-woo');
-        $this->supports = array(
-            'shipping-zones',
-            'instance-settings',
-        );
-        $this->instance_form_fields = array(
-            'enabled' => array(
-                'title' => __('Enable/Disable', 'olza-logistic-woo'),
-                'type' => 'checkbox',
-                'label' => __('Enable this shipping method', 'olza-logistic-woo'),
-                'default' => 'yes',
-            ),
-            'title' => array(
-                'title' => __('Method Title', 'olza-logistic-woo'),
-                'type' => 'text',
-                'description' => __('This controls the title which the user sees during checkout.', 'olza-logistic-woo'),
-                'default' => __('Wedo Box', 'olza-logistic-woo'),
-                'desc_tip' => true
-            )
-        );
-        $this->enabled = $this->get_option('enabled');
-        $this->title = $this->get_option('title'); // Use the title from the settings
+        $this->id = 'olza_pickup_wedobox';
+        $this->default_method_title = __('Wedo Box', 'olza-logistic-woo');
+        $this->method_title = $this->default_method_title;
+        $this->default_method_description = __('Wedo Box Shipping method.', 'olza-logistic-woo');
+        $this->method_description = $this->default_method_description;
+        $this->default_provider_code = 'wedo-box';
 
-        add_action('woocommerce_update_options_shipping_' . $this->id, array($this, 'process_admin_options'));
-    }
-
-    public function calculate_shipping($package = array())
-    {
-        $this->add_rate(array(
-            'id' => $this->id . '_' . $this->instance_id,
-            'label' => $this->title, // Use the title from the settings
-        ));
+        parent::__construct($instance_id);
     }
 }
 
+
+function olza_get_rate_meta_value($method, $key, $default = '')
+{
+    if (!is_object($method) || !method_exists($method, 'get_meta_data')) {
+        return $default;
+    }
+
+    $meta_data = $method->get_meta_data();
+
+    if (empty($meta_data)) {
+        return $default;
+    }
+
+    foreach ($meta_data as $meta_item) {
+        if (is_object($meta_item)) {
+            if (isset($meta_item->key) && $meta_item->key === $key) {
+                return $meta_item->value;
+            }
+
+            if (method_exists($meta_item, 'get_data')) {
+                $meta_array = $meta_item->get_data();
+
+                if (is_array($meta_array) && isset($meta_array['key']) && $meta_array['key'] === $key) {
+                    return isset($meta_array['value']) ? $meta_array['value'] : $default;
+                }
+            }
+        } elseif (is_array($meta_item) && isset($meta_item['key']) && $meta_item['key'] === $key) {
+            return isset($meta_item['value']) ? $meta_item['value'] : $default;
+        }
+    }
+
+    return $default;
+}
 
 add_action('woocommerce_after_shipping_rate', 'add_link_to_custom_shipping_method', 10, 2);
 
 function add_link_to_custom_shipping_method($method, $index)
 {
-if ($method->method_id === 'olza_pickup') {
-    echo '<div class="oloz-pickup-selection pickup-olza" style="display:none;">
-        <p><span></span></p>
-    </div>';
-    echo '<a href="javascript:void(0)" class="olza-load-map" style="display:none;">' . __('Choose Pickup', 'olza-logistic-woo') . '</a>';
-} elseif ($method->method_id === 'olza_pickup_wedobox') {
-    echo '<div class="oloz-pickup-selection pickup-olza-wedobox" style="display:none;">
-        <p><span></span></p>
-    </div>';
-    echo '<a href="javascript:void(0)" class="olza-load-map" style="display:none;">' . __('Choose Pickup', 'olza-logistic-woo') . '</a>';
-}
+    if (strpos($method->method_id, 'olza_pickup') !== 0) {
+        return;
+    }
+
+    $provider_code = olza_get_rate_meta_value($method, 'provider_code', '');
+    $provider_label = olza_get_rate_meta_value($method, 'provider_label', '');
+
+    $provider_attr = $provider_code ? ' data-provider="' . esc_attr($provider_code) . '"' : '';
+    $label_attr = $provider_label ? ' data-provider-label="' . esc_attr($provider_label) . '"' : '';
+
+    echo '<div class="oloz-pickup-selection" style="display:none;"' . $provider_attr . $label_attr . '><p><span></span></p></div>';
+    echo '<a href="javascript:void(0)" class="olza-load-map" style="display:none;"' . $provider_attr . $label_attr . '>' . __('Choose Pickup', 'olza-logistic-woo') . '</a>';
 }
 
 add_action('wp_footer', 'olz_logistic_load_moadal_map_pickups');
@@ -635,75 +794,44 @@ function olz_logistic_load_moadal_map_pickups()
 //                             jQuery('.olza-load-map').hide();
 //                         }
 //                     }
-jQuery(document).ready(function() {
+    jQuery(document).ready(function() {
 
-    // Initially hide all the olza-load-map anchors and oloz-pickup-selection
-    jQuery('.olza-load-map').hide();
-    jQuery('.pickup-olza').css('display', 'none');
-    jQuery('.pickup-olza-wedobox').css('display', 'none');
+    function olzaToggleControls() {
+        var $selected = jQuery('input[name="shipping_method[0]"]:checked');
 
-    // Check the selected shipping method and show the corresponding map and pickup selection
-    var selectedShippingMethod = jQuery('input[name="shipping_method[0]"]:checked').attr('id');
+        jQuery('.olza-load-map').hide();
+        jQuery('.oloz-pickup-selection').hide();
 
-    // If the selected shipping method contains 'olza_pickup', show the map and pickup selection for that method
-    if (selectedShippingMethod && selectedShippingMethod.includes('olza_pickup')) {
-        var closestLi = jQuery('#' + selectedShippingMethod).closest('li');
+        if (!$selected.length) {
+            return;
+        }
 
-        // Check for specific pickup methods
-        if (selectedShippingMethod.includes('olza_pickup_wedobox')) {
-            closestLi.find('.pickup-olza-wedobox').css('display', 'block');
-            closestLi.find('.olza-load-map').show();
-        } else {
-            closestLi.find('.pickup-olza').css('display', 'block');
-            closestLi.find('.olza-load-map').show();
+        var $container = $selected.closest('li');
+        var $link = $container.find('.olza-load-map');
+        var provider = $link.data('provider') || '';
+        var rateValue = $selected.val() ? $selected.val().toString() : '';
+
+        if (!provider && rateValue.indexOf(':') !== -1) {
+            provider = rateValue.split(':').pop();
+        }
+
+        if (provider) {
+            $link.data('provider', provider).show();
+            $container.find('.oloz-pickup-selection').data('provider', provider).show();
         }
     }
 
-    // Re-run on change of shipping method
+    olzaToggleControls();
+
     jQuery('input[name="shipping_method[0]"]').change(function() {
-        // Hide all maps and pickup selections initially
-        jQuery('.olza-load-map').hide();
-        jQuery('.oloz-pickup-selection').css('display', 'none');
-
-        // Check the selected shipping method again
-        var selectedShippingMethod = jQuery('input[name="shipping_method[0]"]:checked').attr('id');
-
-        // If the selected method includes 'olza_pickup', show the relevant map and pickup selection
-        if (selectedShippingMethod && selectedShippingMethod.includes('olza_pickup')) {
-            var closestLi = jQuery('#' + selectedShippingMethod).closest('li');
-
-            // Check for specific pickup methods
-            if (selectedShippingMethod.includes('olza_pickup_wedobox')) {
-                closestLi.find('.pickup-olza-wedobox').css('display', 'block');
-                closestLi.find('.olza-load-map').show();
-            } else {
-                closestLi.find('.pickup-olza').css('display', 'block');
-                closestLi.find('.olza-load-map').show();
-            }
-        }
+        olzaToggleControls();
     });
 
     // Hide pickup options initially when clicking the close modal button
     jQuery('.olza-close-modal').click(function() {
-        jQuery('.pickup-olza').css('display', 'none');
-        jQuery('.pickup-olza-wedobox').css('display', 'none');
-
-        // Check the selected shipping method again after closing the modal
-        var selectedShippingMethod = jQuery('input[name="shipping_method[0]"]:checked').attr('id');
-        
-        // Show the corresponding pickup based on the selected shipping method
-        if (selectedShippingMethod && selectedShippingMethod.includes('olza_pickup')) {
-            var closestLi = jQuery('#' + selectedShippingMethod).closest('li');
-
-            // Show the correct pickup selection based on the method
-            if (selectedShippingMethod.includes('olza_pickup_wedobox')) {
-                closestLi.find('.pickup-olza-wedobox').css('display', 'block');
-                closestLi.find('.olza-load-map').show();
-            } else {
-                closestLi.find('.pickup-olza').css('display', 'block');
-                closestLi.find('.olza-load-map').show();
-            }
-        }
+        jQuery('.olza-load-map').hide();
+        jQuery('.oloz-pickup-selection').hide();
+        olzaToggleControls();
     });
 
 });

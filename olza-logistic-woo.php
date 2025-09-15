@@ -56,15 +56,17 @@ function olza_logistic_load_textdomain()
 	 * Loading Files
 	 */
 
-	if (class_exists('WooCommerce')) {
+        require_once OLZA_LOGISTIC_PLUGIN_PATH . '/inc/olza-logistic-helpers.php';
 
-		require OLZA_LOGISTIC_PLUGIN_PATH . '/inc/olza-logistic-functions.php';
-		require OLZA_LOGISTIC_PLUGIN_PATH . '/inc/olza-logistic-options.php';
-	}
+        if (class_exists('WooCommerce')) {
 
-	if (is_admin()) {
-		require OLZA_LOGISTIC_PLUGIN_PATH . '/inc/olza-logistic-admin-functions.php';
-	}
+                require OLZA_LOGISTIC_PLUGIN_PATH . '/inc/olza-logistic-functions.php';
+                require OLZA_LOGISTIC_PLUGIN_PATH . '/inc/olza-logistic-options.php';
+        }
+
+        if (is_admin()) {
+                require OLZA_LOGISTIC_PLUGIN_PATH . '/inc/olza-logistic-admin-functions.php';
+        }
 }
 
 add_action('plugins_loaded', 'olza_logistic_load_textdomain');
@@ -147,13 +149,31 @@ add_action('admin_enqueue_scripts', 'aloa_marketing_adding_admin_scripts');
 function aloa_marketing_adding_admin_scripts()
 {
 
-	wp_enqueue_script('olza-logistic-admin', OLZA_LOGISTIC_PLUGIN_URL . 'assets/js/olza-logistic-admin.js', array('jquery'), OLZA_LOGISTIC_PLUGIN_VERSION, true);
-	wp_enqueue_script('olza-repeater', OLZA_LOGISTIC_PLUGIN_URL . 'assets/js/repeater.js', array('jquery'), OLZA_LOGISTIC_PLUGIN_VERSION, false);
+        wp_enqueue_script('olza-logistic-admin', OLZA_LOGISTIC_PLUGIN_URL . 'assets/js/olza-logistic-admin.js', array('jquery'), OLZA_LOGISTIC_PLUGIN_VERSION, true);
+        wp_enqueue_script('olza-repeater', OLZA_LOGISTIC_PLUGIN_URL . 'assets/js/repeater.js', array('jquery'), OLZA_LOGISTIC_PLUGIN_VERSION, false);
 
-	wp_localize_script('olza-logistic-admin', 'olza_global_admin', array(
-		'ajax_url' => admin_url('admin-ajax.php'),
-		'nonce' => wp_create_nonce('olza_load_files'),
-		'confirm_msg' => __('Are you sure to refresh the data list! \n it takes around 1 minute to complete', 'olza-logistic-woo'),
+        $olza_options = get_option('olza_options');
+        $available_providers = array();
+        $selected_providers = array();
 
-	));
+        if (isset($olza_options['available_speditions']) && is_array($olza_options['available_speditions'])) {
+                $available_providers = $olza_options['available_speditions'];
+        }
+
+        if (isset($olza_options['spedition_codes'])) {
+                $selected_providers = olza_sanitize_codes_list($olza_options['spedition_codes']);
+        }
+
+        wp_localize_script('olza-logistic-admin', 'olza_global_admin', array(
+                'ajax_url' => admin_url('admin-ajax.php'),
+                'nonce' => wp_create_nonce('olza_load_files'),
+                'confirm_msg' => __('Are you sure to refresh the data list! \n it takes around 1 minute to complete', 'olza-logistic-woo'),
+                'country_required' => __('Please enter at least one country code before syncing.', 'olza-logistic-woo'),
+                'generic_error' => __('An unexpected error occurred while syncing pickup points.', 'olza-logistic-woo'),
+                'available_providers' => $available_providers,
+                'selected_providers' => $selected_providers,
+                'provider_heading' => __('Available pickup providers', 'olza-logistic-woo'),
+                'provider_empty' => __('Sync pickup data to load provider options.', 'olza-logistic-woo'),
+
+        ));
 }
