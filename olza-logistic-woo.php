@@ -150,10 +150,12 @@ function aloa_marketing_adding_admin_scripts()
 	wp_enqueue_script('olza-logistic-admin', OLZA_LOGISTIC_PLUGIN_URL . 'assets/js/olza-logistic-admin.js', array('jquery'), OLZA_LOGISTIC_PLUGIN_VERSION, true);
 	wp_enqueue_script('olza-repeater', OLZA_LOGISTIC_PLUGIN_URL . 'assets/js/repeater.js', array('jquery'), OLZA_LOGISTIC_PLUGIN_VERSION, false);
 
-	wp_localize_script('olza-logistic-admin', 'olza_global_admin', array(
-		'ajax_url' => admin_url('admin-ajax.php'),
-		'nonce' => wp_create_nonce('olza_load_files'),
-		'confirm_msg' => __('Are you sure to refresh the data list! \n it takes around 1 minute to complete', 'olza-logistic-woo'),
+        wp_localize_script('olza-logistic-admin', 'olza_global_admin', array(
+                'ajax_url' => admin_url('admin-ajax.php'),
+                'nonce' => wp_create_nonce('olza_load_files'),
+                'confirm_msg' => __('Are you sure to refresh the data list! \n it takes around 1 minute to complete', 'olza-logistic-woo'),
+                'country_required' => __('Please enter at least one country code before syncing.', 'olza-logistic-woo'),
+                'generic_error' => __('An unexpected error occurred while syncing pickup points.', 'olza-logistic-woo'),
 
-	));
+        ));
 }

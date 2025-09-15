@@ -29,9 +29,27 @@
 
                 olz_obj.prop('disabled', true);
 
+                var countryField = jQuery('input[name="olza_options[country_codes]"]');
+                var speditionField = jQuery('input[name="olza_options[spedition_codes]"]');
+                var clearField = jQuery('input[name="olza_options[clear_before_sync]"]');
+
+                var countries = countryField.length ? countryField.val().trim() : '';
+                var speditions = speditionField.length ? speditionField.val().trim() : '';
+                var clearBeforeSync = clearField.length && clearField.is(':checked') ? 'yes' : 'no';
+
+                if (!countries.length) {
+                    alert(olza_global_admin.country_required);
+                    olz_obj.prop('disabled', false);
+                    jQuery('.olza-admin-spinner').hide();
+                    return false;
+                }
+
                 var olza_data = {
                     nonce: olza_global_admin.nonce,
-                    action: 'olza_get_pickup_point_files'
+                    action: 'olza_get_pickup_point_files',
+                    countries: countries,
+                    speditions: speditions,
+                    clear_before_sync: clearBeforeSync
                 };
                 $.ajax({
                     type: 'POST',
@@ -45,9 +63,12 @@
                         xhr.setRequestHeader('X-WP-Nonce', olza_global_admin.nonce);
                     },
                 }).done(function (response) {
+                    alert(response.message);
+                }).fail(function () {
+                    alert(olza_global_admin.generic_error);
+                }).always(function () {
                     olz_obj.prop('disabled', false);
                     jQuery('.olza-admin-spinner').hide();
-                    alert(response.message);
                 });
 
             } else {
