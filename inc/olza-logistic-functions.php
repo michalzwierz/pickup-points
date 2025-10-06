@@ -32,10 +32,12 @@ add_action('woocommerce_checkout_process', 'olza_pickup_field_validation');
 function olza_pickup_field_validation()
 
 {
+    $chosen_methods = olza_get_chosen_shipping_methods();
 
-    $chosen_methods = WC()->session->get('chosen_shipping_methods');
-    if (strpos($chosen_methods[0], 'olza_pickup') !== false) {
-        if (!$_POST['olza_pickup_option']) wc_add_notice(__('Please select a pickup point.', 'olza-logistic-woo'), 'error');
+    if (olza_is_pickup_shipping_selected($chosen_methods)) {
+        if (empty($_POST['olza_pickup_option'])) {
+            wc_add_notice(__('Please select a pickup point.', 'olza-logistic-woo'), 'error');
+        }
     }
 }
 
@@ -48,9 +50,9 @@ add_action('woocommerce_checkout_update_order_meta', 'olza_logistic_update_picku
 
 function olza_logistic_update_pickup_point($order_id, $data)
 {
-    $chosen_methods = WC()->session->get('chosen_shipping_methods');
+    $chosen_methods = olza_get_chosen_shipping_methods();
 
-    if (strpos($chosen_methods[0], 'olza_pickup') !== false) {
+    if (olza_is_pickup_shipping_selected($chosen_methods)) {
         // Check the pickup type from POST data
         $pickup_type = isset($_POST['pickup_type']) ? sanitize_text_field($_POST['pickup_type']) : '';
 
@@ -74,10 +76,16 @@ function olza_logistic_update_pickup_point($order_id, $data)
 }
 add_action('woocommerce_checkout_create_order', 'olza_update_pickup_order_meta');
 function olza_update_pickup_order_meta($order) {
-    $chosen_methods = WC()->session->get('chosen_shipping_methods');
+    $chosen_methods = olza_get_chosen_shipping_methods();
 
     // Check if the chosen shipping method is either olza_pickup or olza_pickup_wedobox
-    if (isset($chosen_methods[0]) && (strpos($chosen_methods[0], 'olza_pickup') !== false || strpos($chosen_methods[0], 'olza_pickup_wedobox') !== false)) {
+    if (!empty($chosen_methods)) {
+        $first_method = reset($chosen_methods);
+    } else {
+        $first_method = '';
+    }
+
+    if (is_string($first_method) && (strpos($first_method, 'olza_pickup') !== false || strpos($first_method, 'olza_pickup_wedobox') !== false)) {
 
         // Add meta data to order if available
         if (isset($_POST['olza_pickup_option']) && !empty($_POST['olza_pickup_option'])) {
@@ -1173,8 +1181,9 @@ function olza_add_cart_fee($cart)
         return;
 
     global $woocmmerce, $olza_options;
-    $chosen_methods = WC()->session->get('chosen_shipping_methods');
-    if (strpos($chosen_methods[0], 'olza_pickup') !== false) {
+    $chosen_methods = olza_get_chosen_shipping_methods();
+
+    if (olza_is_pickup_shipping_selected($chosen_methods)) {
 
 
         $olza_options = get_option('olza_options');

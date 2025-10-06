@@ -241,40 +241,6 @@ function olza_get_pickup_point_files_callback()
     wp_die();
 }
 
-function olza_sanitize_codes_list($codes)
-{
-    $sanitized = array();
-
-    if (empty($codes)) {
-        return $sanitized;
-    }
-
-    if (is_array($codes)) {
-        $codes = implode(',', $codes);
-    }
-
-    $codes = strtolower((string) $codes);
-    $parts = explode(',', $codes);
-
-    foreach ($parts as $part) {
-        $part = olza_normalize_code($part);
-        if (!empty($part)) {
-            $sanitized[] = $part;
-        }
-    }
-
-    return array_values(array_unique($sanitized));
-}
-
-function olza_normalize_code($code)
-{
-    $code = strtolower((string) $code);
-    $code = trim($code);
-    $code = preg_replace('/[^a-z0-9\-_]/', '', $code);
-
-    return $code;
-}
-
 function olza_clear_pickup_point_files($data_dir)
 {
     if (!is_dir($data_dir)) {
@@ -294,11 +260,6 @@ function olza_clear_pickup_point_files($data_dir)
             } else {
                 @unlink($file_path);
             }
-
-            $response[$country_key][] = array(
-                'code' => $code,
-                'label' => $label,
-            );
         }
     }
 }

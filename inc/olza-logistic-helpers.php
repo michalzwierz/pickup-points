@@ -127,3 +127,35 @@ if (!function_exists('olza_extract_speditions_from_config')) {
         return $result;
     }
 }
+
+if (!function_exists('olza_get_chosen_shipping_methods')) {
+    function olza_get_chosen_shipping_methods()
+    {
+        if (!function_exists('WC')) {
+            return array();
+        }
+
+        $wc = WC();
+
+        if (!$wc || !isset($wc->session) || !is_object($wc->session) || !method_exists($wc->session, 'get')) {
+            return array();
+        }
+
+        $chosen_methods = $wc->session->get('chosen_shipping_methods');
+
+        return is_array($chosen_methods) ? $chosen_methods : array();
+    }
+}
+
+if (!function_exists('olza_is_pickup_shipping_selected')) {
+    function olza_is_pickup_shipping_selected($chosen_methods)
+    {
+        if (!is_array($chosen_methods) || empty($chosen_methods)) {
+            return false;
+        }
+
+        $first_method = reset($chosen_methods);
+
+        return is_string($first_method) && strpos($first_method, 'olza_pickup') !== false;
+    }
+}
