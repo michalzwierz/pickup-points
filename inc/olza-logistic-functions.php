@@ -166,8 +166,26 @@ add_action('woocommerce_order_details_after_order_table_items', 'olza_display_pi
 
 function olza_display_pickup_at_order_details($order)
 {
-    $chosen_methods = olza_get_chosen_shipping_methods();
-    $is_pickup_method = olza_is_pickup_shipping_selected($chosen_methods);
+    $chosen_methods = array();
+
+    if (function_exists('WC')) {
+        $wc = WC();
+
+        if ($wc && isset($wc->session) && is_object($wc->session) && method_exists($wc->session, 'get')) {
+            $session_methods = $wc->session->get('chosen_shipping_methods');
+
+            if (is_array($session_methods)) {
+                $chosen_methods = $session_methods;
+            }
+        }
+    }
+
+    $is_pickup_method = false;
+
+    if (!empty($chosen_methods)) {
+        $first_method = reset($chosen_methods);
+        $is_pickup_method = (is_string($first_method) && strpos($first_method, 'olza_pickup') !== false);
+    }
 
     if (!$is_pickup_method) {
         foreach ($order->get_shipping_methods() as $shipping_item) {
@@ -187,7 +205,7 @@ function olza_display_pickup_at_order_details($order)
     if ($pickup_point) :
 ?>
         <tr>
-            <th scope="row"><?php echo __('Pickup Point', 'olza-logistic-woo'); ?> </th>
+            <th scope="row"><?php echo __('Pickup Point', 'olz-logistic-woo'); ?> </th>
             <td><?php echo esc_html($pickup_point); ?></td>
 
         </tr>
