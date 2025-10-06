@@ -279,6 +279,11 @@ function olza_clear_pickup_point_files($data_dir)
             } else {
                 @unlink($file_path);
             }
+
+            $response[$country_key][] = array(
+                'code' => $code,
+                'label' => $label,
+            );
         }
     }
 }

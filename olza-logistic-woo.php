@@ -56,15 +56,17 @@ function olza_logistic_load_textdomain()
 	 * Loading Files
 	 */
 
-	if (class_exists('WooCommerce')) {
+        require_once OLZA_LOGISTIC_PLUGIN_PATH . '/inc/olza-logistic-helpers.php';
 
-		require OLZA_LOGISTIC_PLUGIN_PATH . '/inc/olza-logistic-functions.php';
-		require OLZA_LOGISTIC_PLUGIN_PATH . '/inc/olza-logistic-options.php';
-	}
+        if (class_exists('WooCommerce')) {
 
-	if (is_admin()) {
-		require OLZA_LOGISTIC_PLUGIN_PATH . '/inc/olza-logistic-admin-functions.php';
-	}
+                require OLZA_LOGISTIC_PLUGIN_PATH . '/inc/olza-logistic-functions.php';
+                require OLZA_LOGISTIC_PLUGIN_PATH . '/inc/olza-logistic-options.php';
+        }
+
+        if (is_admin()) {
+                require OLZA_LOGISTIC_PLUGIN_PATH . '/inc/olza-logistic-admin-functions.php';
+        }
 }
 
 add_action('plugins_loaded', 'olza_logistic_load_textdomain');
