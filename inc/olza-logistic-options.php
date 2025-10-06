@@ -70,7 +70,7 @@ function olza_logistic_get_settings($settings)
             array(
                 'title' => __('Pickup providers to sync', 'olza-logistic-woo'),
                 'type' => 'text',
-                'desc' => __('Provide a comma separated list of pickup provider codes (e.g. ppl-ps,wedo-box). After syncing data you can also select providers from the list below. Leave empty to sync every provider returned for the selected countries.', 'olza-logistic-woo'),
+                'desc' => __('Provide a comma separated list of pickup provider codes (e.g. ppl-ps,wedo-box). Leave empty to sync every provider returned for the selected countries.', 'olza-logistic-woo'),
                 'desc_tip' => true,
                 'id' => 'olza_options[spedition_codes]',
                 'css' => 'min-width:300px;',

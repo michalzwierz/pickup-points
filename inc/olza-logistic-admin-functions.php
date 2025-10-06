@@ -88,18 +88,10 @@ function olza_get_pickup_point_files_callback()
 
     $messages = array();
     $errors = array();
-    $providers_by_country = array();
-
-    $existing_provider_map = array();
-    if (isset($olza_options['available_speditions']) && is_array($olza_options['available_speditions'])) {
-        $existing_provider_map = $olza_options['available_speditions'];
-    }
-    $original_provider_map = $existing_provider_map;
 
     if ($clear_before_sync) {
         olza_clear_pickup_point_files($data_dir);
         $messages[] = __('Existing pickup data cleared.', 'olza-logistic-woo');
-        $existing_provider_map = array();
     }
 
     foreach ($country_arr as $country) {
@@ -145,24 +137,20 @@ function olza_get_pickup_point_files_callback()
         $messages[] = sprintf(__('Configuration for %s downloaded.', 'olza-logistic-woo'), strtoupper($country));
 
         $country_json = json_decode($country_data);
-        $country_speditions = olza_extract_speditions_from_config($country_json);
-        $available_speditions = array_keys($country_speditions);
+        $available_speditions = array();
 
-        if (!empty($country_speditions)) {
-            $providers_by_country[$country] = $country_speditions;
-            $existing_provider_map[$country] = $country_speditions;
+        if (is_object($country_json) && isset($country_json->data) && isset($country_json->data->speditions) && is_array($country_json->data->speditions)) {
+            foreach ($country_json->data->speditions as $speditions_obj) {
+                if (isset($speditions_obj->code)) {
+                    $available_speditions[] = olza_normalize_code($speditions_obj->code);
+                }
+            }
         }
 
         if (empty($available_speditions)) {
             $messages[] = sprintf(__('No pickup providers returned for %s.', 'olza-logistic-woo'), strtoupper($country));
             continue;
         }
-
-        $messages[] = sprintf(
-            __('Available pickup providers for %1$s: %2$s.', 'olza-logistic-woo'),
-            strtoupper($country),
-            implode(', ', array_map('strtoupper', $available_speditions))
-        );
 
         if (!empty($spedition_filter)) {
             $target_speditions = array_values(array_intersect($available_speditions, $spedition_filter));
@@ -223,18 +211,6 @@ function olza_get_pickup_point_files_callback()
         }
     }
 
-    $provider_map_changed = $original_provider_map !== $existing_provider_map;
-
-    if ($provider_map_changed) {
-        if (!empty($existing_provider_map)) {
-            $olza_options['available_speditions'] = $existing_provider_map;
-        } elseif (isset($olza_options['available_speditions'])) {
-            unset($olza_options['available_speditions']);
-        }
-
-        update_option('olza_options', $olza_options);
-    }
-
     $message_text = implode("\n", array_filter(array_merge($messages, $errors)));
 
     if (empty($message_text)) {
@@ -243,72 +219,45 @@ function olza_get_pickup_point_files_callback()
 
     $response = array(
         'success' => empty($errors),
-        'message' => $message_text,
-        'providers' => olza_prepare_provider_response_payload($existing_provider_map),
-        'selected_providers' => array_values($spedition_filter),
+        'message' => $message_text
     );
 
     echo json_encode($response);
     wp_die();
 }
 
-function olza_prepare_provider_response_payload($provider_map)
+function olza_sanitize_codes_list($codes)
 {
-    $response = array();
+    $sanitized = array();
 
-    if (empty($provider_map) || !is_array($provider_map)) {
-        return $response;
+    if (empty($codes)) {
+        return $sanitized;
     }
 
-    foreach ($provider_map as $country_code => $providers) {
-        if (empty($providers) || !is_array($providers)) {
-            continue;
-        }
+    if (is_array($codes)) {
+        $codes = implode(',', $codes);
+    }
 
-        $country_key = strtoupper($country_code);
-        $response[$country_key] = array();
+    $codes = strtolower((string) $codes);
+    $parts = explode(',', $codes);
 
-        foreach ($providers as $provider_code => $provider_info) {
-            $code = '';
-            $label = '';
-
-            if (is_array($provider_info)) {
-                $code = isset($provider_info['code']) ? $provider_info['code'] : $provider_code;
-                if (isset($provider_info['label'])) {
-                    $label = $provider_info['label'];
-                }
-            } elseif (is_object($provider_info)) {
-                if (isset($provider_info->code)) {
-                    $code = $provider_info->code;
-                } else {
-                    $code = $provider_code;
-                }
-
-                if (isset($provider_info->label)) {
-                    $label = $provider_info->label;
-                }
-            } else {
-                $code = $provider_code;
-            }
-
-            $code = olza_normalize_code($code);
-
-            if (empty($code)) {
-                continue;
-            }
-
-            if (empty($label)) {
-                $label = strtoupper($code);
-            }
-
-            $response[$country_key][] = array(
-                'code' => $code,
-                'label' => $label,
-            );
+    foreach ($parts as $part) {
+        $part = olza_normalize_code($part);
+        if (!empty($part)) {
+            $sanitized[] = $part;
         }
     }
 
-    return $response;
+    return array_values(array_unique($sanitized));
+}
+
+function olza_normalize_code($code)
+{
+    $code = strtolower((string) $code);
+    $code = trim($code);
+    $code = preg_replace('/[^a-z0-9\-_]/', '', $code);
+
+    return $code;
 }
 
 function olza_clear_pickup_point_files($data_dir)
@@ -330,6 +279,11 @@ function olza_clear_pickup_point_files($data_dir)
             } else {
                 @unlink($file_path);
             }
+
+            $response[$country_key][] = array(
+                'code' => $code,
+                'label' => $label,
+            );
         }
     }
 }
