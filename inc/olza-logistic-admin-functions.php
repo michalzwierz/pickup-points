@@ -10,6 +10,10 @@ function olza_get_pickup_point_files_callback()
     global $olza_options;
     $olza_options = get_option('olza_options');
 
+    if (!is_array($olza_options)) {
+        $olza_options = array();
+    }
+
     if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'olza_load_files')) {
         echo json_encode(array('success' => false, 'message' => __('Security verification failed.', 'olza-logistic-woo')));
         wp_die();
@@ -89,10 +93,19 @@ function olza_get_pickup_point_files_callback()
     $messages = array();
     $errors = array();
 
+    $provider_catalog = array();
+
+    if (isset($olza_options['available_speditions']) && is_array($olza_options['available_speditions'])) {
+        $provider_catalog = $olza_options['available_speditions'];
+    }
+
     if ($clear_before_sync) {
         olza_clear_pickup_point_files($data_dir);
         $messages[] = __('Existing pickup data cleared.', 'olza-logistic-woo');
+        $provider_catalog = array();
     }
+
+    $providers_updated = false;
 
     foreach ($country_arr as $country) {
 
@@ -137,15 +150,12 @@ function olza_get_pickup_point_files_callback()
         $messages[] = sprintf(__('Configuration for %s downloaded.', 'olza-logistic-woo'), strtoupper($country));
 
         $country_json = json_decode($country_data);
-        $available_speditions = array();
+        $country_code = strtolower($country);
+        $country_speditions = olza_extract_speditions_from_config($country_json);
+        $provider_catalog[$country_code] = $country_speditions;
+        $providers_updated = true;
 
-        if (is_object($country_json) && isset($country_json->data) && isset($country_json->data->speditions) && is_array($country_json->data->speditions)) {
-            foreach ($country_json->data->speditions as $speditions_obj) {
-                if (isset($speditions_obj->code)) {
-                    $available_speditions[] = olza_normalize_code($speditions_obj->code);
-                }
-            }
-        }
+        $available_speditions = array_keys($country_speditions);
 
         if (empty($available_speditions)) {
             $messages[] = sprintf(__('No pickup providers returned for %s.', 'olza-logistic-woo'), strtoupper($country));
@@ -209,6 +219,11 @@ function olza_get_pickup_point_files_callback()
 
             $messages[] = sprintf(__('Pickup points for %1$s / %2$s downloaded.', 'olza-logistic-woo'), strtoupper($country), strtoupper($sped_value));
         }
+    }
+
+    if ($providers_updated) {
+        $olza_options['available_speditions'] = $provider_catalog;
+        update_option('olza_options', $olza_options);
     }
 
     $message_text = implode("\n", array_filter(array_merge($messages, $errors)));
